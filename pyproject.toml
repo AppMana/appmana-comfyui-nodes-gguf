@@ -1,0 +1,32 @@
+[project]
+name = "comfyui-gguf"
+description = "GGUF Quantization support for native ComfyUI models\nThis is currently very much WIP. These custom nodes provide support for model files stored in the GGUF format popularized by llama.cpp.\nWhile quantization wasn't feasible for regular UNET models (conv2d), transformer/DiT models such as flux seem less affected by quantization. This allows running it in much lower bits per weight variable bitrate quants on low-end GPUs."
+version = "1.0.0"
+license = { file = "LICENSE" }
+dynamic = ["dependencies"]
+
+[project.urls]
+Repository = "https://github.com/city96/ComfyUI-GGUF"
+#  Used by Comfy Registry https://comfyregistry.org
+
+[tool.comfy]
+PublisherId = ""
+DisplayName = "ComfyUI-GGUF"
+Icon = ""
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["comfyui_gguf"]
+package-dir = { "comfyui_gguf" = "." }
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+[project.entry-points."comfyui.custom_nodes"]
+comfyui_gguf = "comfyui_gguf"
+
+[project.scripts]
+comfyui-gguf-convert = "comfyui_gguf.tools.convert"
