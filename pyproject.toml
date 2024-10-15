@@ -19,8 +19,8 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["comfyui_gguf"]
-package-dir = { "comfyui_gguf" = "." }
+packages = ["comfyui_gguf", "comfyui_gguf.tools"]
+package-dir = { "comfyui_gguf" = ".", "comfyui_gguf.tools" = "./tools" }
 
 [tool.setuptools.dynamic]
 dependencies = { file = ["requirements.txt"] }
@@ -29,4 +29,4 @@ dependencies = { file = ["requirements.txt"] }
 comfyui_gguf = "comfyui_gguf"
 
 [project.scripts]
-comfyui-gguf-convert = "comfyui_gguf.tools.convert"
+comfyui-gguf-convert = "comfyui_gguf.tools.convert:main"

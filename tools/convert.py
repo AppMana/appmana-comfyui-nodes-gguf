@@ -175,7 +175,7 @@ def handle_tensors(args, writer, state_dict):
 
         writer.add_tensor(new_name, data, raw_dtype=data_qtype)
 
-if __name__ == "__main__":
+def main():
     args = parse_args()
     path = args.src
     writer, state_dict = load_model(path)
@@ -197,3 +197,6 @@ if __name__ == "__main__":
     writer.write_kv_data_to_file()
     writer.write_tensors_to_file(progress=True)
     writer.close()
+
+if __name__ == "__main__":
+    main()

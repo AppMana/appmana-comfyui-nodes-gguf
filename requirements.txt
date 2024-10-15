@@ -1,2 +1,3 @@
+comfyui
 gguf>=0.9.1
 numpy<2.0.0
