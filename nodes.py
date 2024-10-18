@@ -1,26 +1,69 @@
 # (c) City96 || Apache-2.0 (apache.org/licenses/LICENSE-2.0)
-import torch
-import gguf
 import copy
 import logging
+from typing import Final
 
-import comfy.sd
-import comfy.utils
+import gguf
+import torch
+
 import comfy.model_management
 import comfy.model_patcher
-import folder_paths
-
-from .ops import GGMLTensor, GGMLOps, move_patch_to_device
+import comfy.sd
+import comfy.utils
+from comfy.cmd.folder_paths import add_model_folder_path, get_folder_paths
+from comfy.model_downloader import KnownDownloadables, get_filename_list_with_downloadable, add_known_models, \
+    get_or_download
+from comfy.model_downloader_types import HuggingFile
+from comfy.nodes.package_typing import CustomNode
 from .dequant import is_quantized, is_torch_compatible
+from .ops import GGMLTensor, GGMLOps, move_patch_to_device
 
-# Add a custom keys for files ending in .gguf
-if "unet_gguf" not in folder_paths.folder_names_and_paths:
-    orig = folder_paths.folder_names_and_paths.get("diffusion_models", folder_paths.folder_names_and_paths.get("unet", [[], set()]))
-    folder_paths.folder_names_and_paths["unet_gguf"] = (orig[0], {".gguf"})
+add_model_folder_path("unet_gguf", extensions={".gguf"})
+add_model_folder_path("clip_gguf", extensions={".gguf"})
 
-if "clip_gguf" not in folder_paths.folder_names_and_paths:
-    orig = folder_paths.folder_names_and_paths.get("clip", [[], set()])
-    folder_paths.folder_names_and_paths["clip_gguf"] = (orig[0], {".gguf"})
+KNOWN_UNET_GGUF: Final[KnownDownloadables] = KnownDownloadables([
+    HuggingFile("city96/FLUX.1-dev-gguf", "flux1-dev-F16.gguf"),
+    HuggingFile("city96/FLUX.1-dev-gguf", "flux1-dev-Q2_K.gguf"),
+    HuggingFile("city96/FLUX.1-dev-gguf", "flux1-dev-Q3_K_S.gguf"),
+    HuggingFile("city96/FLUX.1-dev-gguf", "flux1-dev-Q4_0.gguf"),
+    HuggingFile("city96/FLUX.1-dev-gguf", "flux1-dev-Q4_1.gguf"),
+    HuggingFile("city96/FLUX.1-dev-gguf", "flux1-dev-Q4_K_S.gguf"),
+    HuggingFile("city96/FLUX.1-dev-gguf", "flux1-dev-Q5_0.gguf"),
+    HuggingFile("city96/FLUX.1-dev-gguf", "flux1-dev-Q5_1.gguf"),
+    HuggingFile("city96/FLUX.1-dev-gguf", "flux1-dev-Q5_K_S.gguf"),
+    HuggingFile("city96/FLUX.1-dev-gguf", "flux1-dev-Q6_K.gguf"),
+    HuggingFile("city96/FLUX.1-dev-gguf", "flux1-dev-Q8_0.gguf"),
+
+    HuggingFile("city96/FLUX.1-schnell-gguf", "flux1-schnell-F16.gguf"),
+    HuggingFile("city96/FLUX.1-schnell-gguf", "flux1-schnell-Q2_K.gguf"),
+    HuggingFile("city96/FLUX.1-schnell-gguf", "flux1-schnell-Q3_K_S.gguf"),
+    HuggingFile("city96/FLUX.1-schnell-gguf", "flux1-schnell-Q4_0.gguf"),
+    HuggingFile("city96/FLUX.1-schnell-gguf", "flux1-schnell-Q4_1.gguf"),
+    HuggingFile("city96/FLUX.1-schnell-gguf", "flux1-schnell-Q4_K_S.gguf"),
+    HuggingFile("city96/FLUX.1-schnell-gguf", "flux1-schnell-Q5_0.gguf"),
+    HuggingFile("city96/FLUX.1-schnell-gguf", "flux1-schnell-Q5_1.gguf"),
+    HuggingFile("city96/FLUX.1-schnell-gguf", "flux1-schnell-Q5_K_S.gguf"),
+    HuggingFile("city96/FLUX.1-schnell-gguf", "flux1-schnell-Q6_K.gguf"),
+    HuggingFile("city96/FLUX.1-schnell-gguf", "flux1-schnell-Q8_0.gguf"),
+], "unet_gguf")
+
+KNOWN_CLIP_GGUF: Final[KnownDownloadables] = KnownDownloadables([
+    HuggingFile("city96/t5-v1_1-xxl-encoder-gguf", "t5-v1_1-xxl-encoder-Q3_K_L.gguf"),
+    HuggingFile("city96/t5-v1_1-xxl-encoder-gguf", "t5-v1_1-xxl-encoder-Q3_K_M.gguf"),
+    HuggingFile("city96/t5-v1_1-xxl-encoder-gguf", "t5-v1_1-xxl-encoder-Q3_K_S.gguf"),
+    HuggingFile("city96/t5-v1_1-xxl-encoder-gguf", "t5-v1_1-xxl-encoder-Q4_K_M.gguf"),
+    HuggingFile("city96/t5-v1_1-xxl-encoder-gguf", "t5-v1_1-xxl-encoder-Q4_K_S.gguf"),
+    HuggingFile("city96/t5-v1_1-xxl-encoder-gguf", "t5-v1_1-xxl-encoder-Q5_K_M.gguf"),
+    HuggingFile("city96/t5-v1_1-xxl-encoder-gguf", "t5-v1_1-xxl-encoder-Q5_K_S.gguf"),
+    HuggingFile("city96/t5-v1_1-xxl-encoder-gguf", "t5-v1_1-xxl-encoder-Q6_K.gguf"),
+    HuggingFile("city96/t5-v1_1-xxl-encoder-gguf", "t5-v1_1-xxl-encoder-Q8_0.gguf"),
+    HuggingFile("city96/t5-v1_1-xxl-encoder-gguf", "t5-v1_1-xxl-encoder-f16.gguf"),
+    HuggingFile("city96/t5-v1_1-xxl-encoder-gguf", "t5-v1_1-xxl-encoder-f32.gguf"),
+], "clip_gguf")
+
+add_known_models("unet_gguf", KNOWN_UNET_GGUF)
+add_known_models("unet_gguf", KNOWN_CLIP_GGUF)
+
 
 def gguf_sd_loader_get_orig_shape(reader, tensor_name):
     field_key = f"comfy.gguf.orig_shape.{tensor_name}"
@@ -31,6 +74,7 @@ def gguf_sd_loader_get_orig_shape(reader, tensor_name):
     if len(field.types) != 2 or field.types[0] != gguf.GGUFValueType.ARRAY or field.types[1] != gguf.GGUFValueType.INT32:
         raise TypeError(f"Bad original shape metadata for {field_key}: Expected ARRAY of INT32, got {field.types}")
     return torch.Size(tuple(int(field.parts[part_idx][0]) for part_idx in field.data))
+
 
 def gguf_sd_loader(path, handle_prefix="model.diffusion_model."):
     """
@@ -64,7 +108,7 @@ def gguf_sd_loader(path, handle_prefix="model.diffusion_model."):
         arch_str = str(arch_field.parts[arch_field.data[-1]], encoding="utf-8")
         if arch_str not in {"flux", "sd1", "sdxl", "t5", "t5encoder"}:
             raise ValueError(f"Unexpected architecture type in GGUF file, expected one of flux, sd1, sdxl, t5encoder but got {arch_str!r}")
-    else: # stable-diffusion.cpp
+    else:  # stable-diffusion.cpp
         # import here to avoid changes to convert.py breaking regular models
         from .tools.convert import detect_arch
         arch_str = detect_arch(set(val[0] for val in tensors))
@@ -76,7 +120,7 @@ def gguf_sd_loader(path, handle_prefix="model.diffusion_model."):
     for sd_key, tensor in tensors:
         tensor_name = tensor.name
         tensor_type_str = str(tensor.tensor_type)
-        torch_tensor = torch.from_numpy(tensor.data) # mmap
+        torch_tensor = torch.from_numpy(tensor.data)  # mmap
 
         shape = gguf_sd_loader_get_orig_shape(reader, tensor_name)
         if shape is None:
@@ -95,10 +139,11 @@ def gguf_sd_loader(path, handle_prefix="model.diffusion_model."):
 
     # sanity check debug print
     print("\nggml_sd_loader:")
-    for k,v in qtype_dict.items():
+    for k, v in qtype_dict.items():
         print(f" {k:30}{v:3}")
 
     return state_dict
+
 
 # for remapping llama.cpp -> original key names
 clip_sd_map = {
@@ -118,18 +163,22 @@ clip_sd_map = {
     "ffn_norm": "layer.1.layer_norm",
 }
 
+
 def gguf_clip_loader(path):
     raw_sd = gguf_sd_loader(path)
     assert "enc.blk.23.ffn_up.weight" in raw_sd, "Invalid Text Encoder!"
     sd = {}
-    for k,v in raw_sd.items():
-        for s,d in clip_sd_map.items():
-            k = k.replace(s,d)
+    for k, v in raw_sd.items():
+        for s, d in clip_sd_map.items():
+            k = k.replace(s, d)
         sd[k] = v
     return sd
 
+
 # TODO: Temporary fix for now
 import collections
+
+
 class GGUFModelPatcher(comfy.model_patcher.ModelPatcher):
     patch_on_device = False
 
@@ -181,6 +230,7 @@ class GGUFModelPatcher(comfy.model_patcher.ModelPatcher):
         return super().unpatch_model(device_to=device_to, unpatch_weights=unpatch_weights)
 
     mmap_released = False
+
     def load(self, *args, force_patch_weights=False, **kwargs):
         # always call `patch_weight_to_device` even for lowvram
         super().load(*args, force_patch_weights=True, **kwargs)
@@ -221,10 +271,11 @@ class GGUFModelPatcher(comfy.model_patcher.ModelPatcher):
         n.patch_on_device = getattr(self, "patch_on_device", False)
         return n
 
-class UnetLoaderGGUF:
+
+class UnetLoaderGGUF(CustomNode):
     @classmethod
     def INPUT_TYPES(s):
-        unet_names = [x for x in folder_paths.get_filename_list("unet_gguf")]
+        unet_names = [x for x in get_filename_list_with_downloadable("unet_gguf")]
         return {
             "required": {
                 "unet_name": (unet_names,),
@@ -254,7 +305,7 @@ class UnetLoaderGGUF:
             ops.Linear.patch_dtype = getattr(torch, patch_dtype)
 
         # init model
-        unet_path = folder_paths.get_full_path("unet", unet_name)
+        unet_path = get_or_download("unet_gguf", unet_name)
         sd = gguf_sd_loader(unet_path)
         model = comfy.sd.load_diffusion_model_state_dict(
             sd, model_options={"custom_operations": ops}
@@ -266,10 +317,11 @@ class UnetLoaderGGUF:
         model.patch_on_device = patch_on_device
         return (model,)
 
+
 class UnetLoaderGGUFAdvanced(UnetLoaderGGUF):
     @classmethod
     def INPUT_TYPES(s):
-        unet_names = [x for x in folder_paths.get_filename_list("unet_gguf")]
+        unet_names = [x for x in get_filename_list_with_downloadable("unet_gguf")]
         return {
             "required": {
                 "unet_name": (unet_names,),
@@ -278,7 +330,9 @@ class UnetLoaderGGUFAdvanced(UnetLoaderGGUF):
                 "patch_on_device": ("BOOLEAN", {"default": False}),
             }
         }
+
     TITLE = "Unet Loader (GGUF/Advanced)"
+
 
 clip_name_dict = {
     "stable_diffusion": comfy.sd.CLIPType.STABLE_DIFFUSION,
@@ -288,6 +342,7 @@ clip_name_dict = {
     "sd3": comfy.sd.CLIPType.SD3,
     "flux": comfy.sd.CLIPType.FLUX,
 }
+
 
 class CLIPLoaderGGUF:
     @classmethod
@@ -307,8 +362,8 @@ class CLIPLoaderGGUF:
     @classmethod
     def get_filename_list(s):
         files = []
-        files += folder_paths.get_filename_list("clip")
-        files += folder_paths.get_filename_list("clip_gguf")
+        files += get_filename_list_with_downloadable("clip")
+        files += get_filename_list_with_downloadable("clip_gguf")
         return sorted(files)
 
     def load_data(self, ckpt_paths):
@@ -319,19 +374,19 @@ class CLIPLoaderGGUF:
             else:
                 sd = comfy.utils.load_torch_file(p, safe_load=True)
                 clip_data.append(
-                    {k:GGMLTensor(v, tensor_type=gguf.GGMLQuantizationType.F16, tensor_shape=v.shape) for k,v in sd.items()}
+                    {k: GGMLTensor(v, tensor_type=gguf.GGMLQuantizationType.F16, tensor_shape=v.shape) for k, v in sd.items()}
                 )
         return clip_data
 
     def load_patcher(self, clip_paths, clip_type, clip_data):
         clip = comfy.sd.load_text_encoder_state_dicts(
-            clip_type = clip_type,
-            state_dicts = clip_data,
-            model_options = {
+            clip_type=clip_type,
+            state_dicts=clip_data,
+            model_options={
                 "custom_operations": GGMLOps,
                 "initial_device": comfy.model_management.text_encoder_offload_device()
             },
-            embedding_directory = folder_paths.get_folder_paths("embeddings"),
+            embedding_directory=get_folder_paths("embeddings"),
         )
         clip.patcher = GGUFModelPatcher.clone(clip.patcher)
 
@@ -346,35 +401,46 @@ class CLIPLoaderGGUF:
         return clip
 
     def load_clip(self, clip_name, type="stable_diffusion"):
-        clip_path = folder_paths.get_full_path("clip", clip_name)
+        clip_path = get_or_download("clip", clip_name)
         clip_type = clip_name_dict.get(type, comfy.sd.CLIPType.STABLE_DIFFUSION)
         return (self.load_patcher([clip_path], clip_type, self.load_data([clip_path])),)
+
+
+def get_gguf_clips(*clip_names: str) -> list[str]:
+    ret = []
+    for clip_name in clip_names:
+        for folder_name in ("clip_gguf", "clip"):
+            candidate = get_or_download(folder_name=folder_name, filename=clip_name)
+            if candidate is not None:
+                ret.append(candidate)
+                break
+    return ret
+
 
 class DualCLIPLoaderGGUF(CLIPLoaderGGUF):
     @classmethod
     def INPUT_TYPES(s):
-        file_options = (s.get_filename_list(), )
+        file_options = (s.get_filename_list(),)
         return {
             "required": {
                 "clip_name1": file_options,
                 "clip_name2": file_options,
-                "type": (("sdxl", "sd3", "flux"), ),
+                "type": (("sdxl", "sd3", "flux"),),
             }
         }
 
     TITLE = "DualCLIPLoader (GGUF)"
 
     def load_clip(self, clip_name1, clip_name2, type):
-        clip_path1 = folder_paths.get_full_path("clip", clip_name1)
-        clip_path2 = folder_paths.get_full_path("clip", clip_name2)
-        clip_paths = (clip_path1, clip_path2)
+        clip_paths = get_gguf_clips(clip_name1, clip_name2)
         clip_type = clip_name_dict.get(type, comfy.sd.CLIPType.STABLE_DIFFUSION)
         return (self.load_patcher(clip_paths, clip_type, self.load_data(clip_paths)),)
+
 
 class TripleCLIPLoaderGGUF(CLIPLoaderGGUF):
     @classmethod
     def INPUT_TYPES(s):
-        file_options = (s.get_filename_list(), )
+        file_options = (s.get_filename_list(),)
         return {
             "required": {
                 "clip_name1": file_options,
@@ -386,12 +452,10 @@ class TripleCLIPLoaderGGUF(CLIPLoaderGGUF):
     TITLE = "TripleCLIPLoader (GGUF)"
 
     def load_clip(self, clip_name1, clip_name2, clip_name3, type="sd3"):
-        clip_path1 = folder_paths.get_full_path("clip", clip_name1)
-        clip_path2 = folder_paths.get_full_path("clip", clip_name2)
-        clip_path3 = folder_paths.get_full_path("clip", clip_name3)
-        clip_paths = (clip_path1, clip_path2, clip_path3)
+        clip_paths = get_gguf_clips(clip_name1, clip_name2, clip_name3)
         clip_type = clip_name_dict.get(type, comfy.sd.CLIPType.STABLE_DIFFUSION)
         return (self.load_patcher(clip_paths, clip_type, self.load_data(clip_paths)),)
+
 
 NODE_CLASS_MAPPINGS = {
     "UnetLoaderGGUF": UnetLoaderGGUF,
